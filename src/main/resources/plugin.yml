@@ -1,0 +1,17 @@
+name: JEffects
+version: '${project.version}'
+main: jfbdev.jeffects.JEffects
+api-version: '1.16'
+authors: [ jFrostyBoy ]
+description: Постоянные эффекты для игроков
+
+commands:
+  je:
+    description: Управляйте стойкими эффектами
+    usage: /je <subcommand>
+    permission: jeffects.admin
+
+permissions:
+  jeffects.admin:
+    description: Доступ к командам администратора
+    default: op
