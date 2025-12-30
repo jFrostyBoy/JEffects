@@ -55,3 +55,8 @@ _Все данные эффектов автоматически сохраня�
 - `effects.yml` — хранилище всех активных постоянных эффектов (не редактируйте вручную!)
 
 **Приятного использования!**
+
+<img width="956" height="141" alt="Знімок_20251230_174605" src="https://github.com/user-attachments/assets/97d80853-6698-4657-9460-537e36501750" />
+<img width="993" height="65" alt="Знімок_20251230_174621" src="https://github.com/user-attachments/assets/b33b182b-b89e-41d4-8c65-26c491a35875" />
+<img width="945" height="66" alt="Знімок_20251230_174859" src="https://github.com/user-attachments/assets/2a1b039e-8c2a-4348-970e-9a0d15b67775" />
+<img width="889" height="37" alt="Знімок_20251230_174636" src="https://github.com/user-attachments/assets/c0c356c7-454b-4e47-af7e-aacae6dfdc4a" />
