@@ -32,6 +32,8 @@ public class JEffects extends JavaPlugin implements Listener, CommandExecutor, T
     private File dataFile;
     private org.bukkit.configuration.file.FileConfiguration dataConfig;
     private String prefix;
+    private boolean defaultEffectsEnabled;
+    private final List<DefaultEffect> defaultEffectsList = new ArrayList<>();
 
     @Override
     public void onEnable() {
@@ -75,12 +77,63 @@ public class JEffects extends JavaPlugin implements Listener, CommandExecutor, T
 
     @Override
     public void onDisable() {
-        saveEffectsAsync();
+        saveEffects();
     }
 
     private void reloadConfigCustom() {
         reloadConfig();
         prefix = ChatColor.translateAlternateColorCodes('&', getConfig().getString("messages.prefix", "&7[&aJEffects&7] "));
+
+        defaultEffectsEnabled = getConfig().getBoolean("default-effects.enabled", true);
+        defaultEffectsList.clear();
+
+        if (!defaultEffectsEnabled) return;
+
+        List<String> list = getConfig().getStringList("default-effects.effects-list");
+        for (String entry : list) {
+            String[] parts = entry.split(":");
+            if (parts.length < 2) continue;
+
+            PotionEffectType type = PotionEffectType.getByName(parts[0].toUpperCase());
+            if (type == null) {
+                getLogger().warning("Неизвестный эффект в default-effects: " + parts[0]);
+                continue;
+            }
+
+            long seconds = parseDurationConfig(parts[1]);
+            if (seconds == -2) {
+                getLogger().warning("Неверная длительность для эффекта " + parts[0] + ": " + parts[1]);
+                continue;
+            }
+
+            int level = 1;
+            if (parts.length >= 3) {
+                try {
+                    level = Integer.parseInt(parts[2]);
+                    if (level < 1) level = 1;
+                } catch (NumberFormatException ignored) {}
+            }
+
+            defaultEffectsList.add(new DefaultEffect(type, seconds, level));
+        }
+    }
+
+    private long parseDurationConfig(String input) {
+        if (input.equalsIgnoreCase("-1") || input.equalsIgnoreCase("infinite")) return -1;
+
+        Pattern p = Pattern.compile("(\\d+)([smhdw])", Pattern.CASE_INSENSITIVE);
+        Matcher m = p.matcher(input.toLowerCase());
+        if (!m.matches()) return -2;
+
+        long value = Long.parseLong(m.group(1));
+        return switch (m.group(2)) {
+            case "s" -> value;
+            case "m" -> value * 60;
+            case "h" -> value * 3600;
+            case "d" -> value * 86400;
+            case "w" -> value * 604800;
+            default -> -2;
+        };
     }
 
     private String msg(String path) {
@@ -184,7 +237,30 @@ public class JEffects extends JavaPlugin implements Listener, CommandExecutor, T
 
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
-        applyEffectsToPlayer(e.getPlayer());
+        Player player = e.getPlayer();
+
+        applyEffectsToPlayer(player);
+
+        if (defaultEffectsEnabled && !player.hasPlayedBefore()) {
+            UUID uuid = player.getUniqueId();
+            playerEffects.computeIfAbsent(uuid, k -> new HashMap<>());
+
+            boolean appliedAny = false;
+            for (DefaultEffect def : defaultEffectsList) {
+                EffectData data = new EffectData();
+                data.level = def.level;
+                data.infinite = def.seconds == -1;
+                data.remainingTicks = data.infinite ? 0 : def.seconds * 20;
+
+                playerEffects.get(uuid).putIfAbsent(def.type, data);
+                appliedAny = true;
+            }
+
+            if (appliedAny) {
+                applyEffectsToPlayer(player);
+                saveEffectsAsync();
+            }
+        }
     }
 
     @EventHandler
@@ -282,10 +358,25 @@ public class JEffects extends JavaPlugin implements Listener, CommandExecutor, T
                     return true;
                 }
 
-                Player targetOnline = Bukkit.getPlayer(args[1]);
-                OfflinePlayer target = targetOnline != null ? targetOnline : Bukkit.getOfflinePlayerIfCached(args[1]);
+                String targetArg = args[1];
+                String effectArg = args[2];
+
+                if (targetArg.equalsIgnoreCase("all") && effectArg.equalsIgnoreCase("all")) {
+                    playerEffects.clear();
+
+                    for (Player online : Bukkit.getOnlinePlayers()) {
+                        online.getActivePotionEffects().forEach(pe -> online.removePotionEffect(pe.getType()));
+                    }
+
+                    sender.sendMessage(msg("messages.clear-all-all-success"));
+                    saveEffectsAsync();
+                    return true;
+                }
+
+                Player targetOnline = Bukkit.getPlayer(targetArg);
+                OfflinePlayer target = targetOnline != null ? targetOnline : Bukkit.getOfflinePlayerIfCached(targetArg);
                 if (target == null || target.getName() == null) {
-                    sender.sendMessage(msg("player-not-found", "%player%", args[1]));
+                    sender.sendMessage(msg("player-not-found", "%player%", targetArg));
                     return true;
                 }
 
@@ -297,14 +388,14 @@ public class JEffects extends JavaPlugin implements Listener, CommandExecutor, T
                     return true;
                 }
 
-                if (args[2].equalsIgnoreCase("all")) {
+                if (effectArg.equalsIgnoreCase("all")) {
                     playerEffects.remove(uuid);
                     if (targetOnline != null) {
                         targetOnline.getActivePotionEffects().forEach(pe -> targetOnline.removePotionEffect(pe.getType()));
                     }
                     sender.sendMessage(msg("clear-all-success", "%player%", target.getName()));
                 } else {
-                    PotionEffectType type = PotionEffectType.getByName(args[2].toUpperCase());
+                    PotionEffectType type = PotionEffectType.getByName(effectArg.toUpperCase());
                     if (type == null) {
                         sender.sendMessage(msg("invalid-effect"));
                         return true;
@@ -400,10 +491,21 @@ public class JEffects extends JavaPlugin implements Listener, CommandExecutor, T
 
         String sub = args[0].toLowerCase();
         if (args.length == 2 && (sub.equals("give") || sub.equals("clear") || sub.equals("info"))) {
-            return Bukkit.getOnlinePlayers().stream()
+            List<String> players = Bukkit.getOnlinePlayers().stream()
                     .map(Player::getName)
                     .filter(name -> name.toLowerCase().startsWith(args[1].toLowerCase()))
                     .collect(Collectors.toList());
+            if (sub.equals("clear")) players.add("all");
+            return players;
+        }
+
+        if (sub.equals("clear") && args.length == 3) {
+            List<String> list = new ArrayList<>(filterStartsWith(
+                    Arrays.stream(PotionEffectType.values())
+                            .map(t -> t.getName().toLowerCase())
+                            .collect(Collectors.toList()), args[2]));
+            list.add("all");
+            return list;
         }
 
         if (sub.equals("give")) {
@@ -420,15 +522,6 @@ public class JEffects extends JavaPlugin implements Listener, CommandExecutor, T
             }
         }
 
-        if (sub.equals("clear") && args.length == 3) {
-            List<String> list = new ArrayList<>(filterStartsWith(
-                    Arrays.stream(PotionEffectType.values())
-                            .map(t -> t.getName().toLowerCase())
-                            .collect(Collectors.toList()), args[2]));
-            list.add("all");
-            return list;
-        }
-
         return null;
     }
 
@@ -443,5 +536,17 @@ public class JEffects extends JavaPlugin implements Listener, CommandExecutor, T
         int level = 1;
         long remainingTicks = 0;
         boolean infinite = false;
+    }
+
+    private static class DefaultEffect {
+        PotionEffectType type;
+        long seconds;
+        int level;
+
+        DefaultEffect(PotionEffectType type, long seconds, int level) {
+            this.type = type;
+            this.seconds = seconds;
+            this.level = level;
+        }
     }
 }
