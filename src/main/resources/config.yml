@@ -1,3 +1,11 @@
+# Эффекты выдаются при первом входе на сервер
+default-effects:
+  enabled: true
+  effects-list:
+    - "NIGHT_VISION:-1"
+    # - "SPEED:300s"           - Скорость I на 15 секунд
+    # - "JUMP:1h:2"            - Прыжок II на 1 час
+
 messages:
   prefix: "&7[&aJEffects&7] "
 
@@ -16,6 +24,7 @@ messages:
   give-success: "&aЭффект &e%effect% &a(уровень %level%) применён к игроку &e%player% &aна &e%duration%"
   clear-success: "&aЭффект &e%effect% &aснят с игрока &e%player%"
   clear-all-success: "&aВсе эффекты сняты с игрока &e%player%"
+  clear-all-all-success: "&aВсе эффекты сняты со всех игроков!"
   no-effects: "&eУ игрока &b%player% &eнет активных эффектов."
   no-such-effect: "&eУ игрока &b%player% &eнет такого эффекта."
 
